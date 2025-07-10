@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Learning sleep stages on EEG</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #f8f8f8; }
+    #app { max-width: 400px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.10);}
+    .btn { display: block; width: 100%; padding: 12px 0; margin: 12px 0; font-size: 18px; border: none; border-radius: 6px; cursor: pointer; background: #1976d2; color: #fff; transition: background 0.2s; }
+    .btn:hover { background: #1565c0; }
+    .lang-select { float: right; margin-bottom: 16px; }
+    .menu-btns { display: flex; flex-direction: column; gap: 12px; }
+    .eeg-img { width: 100%; height: 120px; object-fit: contain; background: #eee; display: block; margin: 18px 0 12px 0; border-radius: 6px; }
+    .blitz-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px;}
+    .blitz-title-row { display: flex; align-items: center; gap: 10px; }
+    .back-icon-btn { background: none; border: none; cursor: pointer; padding: 0; margin-right: 4px; display: flex; align-items: center; }
+    .back-icon-btn svg { width: 28px; height: 28px; fill: #1976d2; }
+    .montage-select { font-size: 16px; padding: 6px; border-radius: 4px; border: 1px solid #bbb; background: #f5f5f5; }
+    .blitz-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+    .choice-btn { padding: 12px 0; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; background: #e0e0e0; transition: background 0.2s, color 0.2s; }
+    .choice-btn.correct { background: #6ac36a; color: #fff; }
+    .choice-btn.incorrect { background: #e65f5f; color: #fff; }
+    .choice-btn.right-shade { background: #388e3c; color: #fff; }
+    .choice-btn:disabled { opacity: 0.8; cursor: default; }
+    .stats-block { text-align: center; font-size: 22px; margin-bottom: 18px;}
+    .nav-btns { display: flex; gap: 12px; justify-content: center; margin: 18px 0 0 0;}
+    .hidden { display: none; }
+    .blitz-instructions { margin: 24px 0; font-size: 18px; text-align: center; }
+    @media (max-width: 500px) {
+      #app { margin: 0; border-radius: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    // --- Data ---
+    // State: n1/n2/n3/rem/eyeOpen/eyeClosed, i=1..5, montage=mono/double
+    const STATES = ['n1','n2','n3','rem','eyeOpen','eyeClosed'];
+    const MONTAGES = [
+      { value: "mono", label_en: "Monopolar", label_ru: "Монополярный" },
+      { value: "double", label_en: "Double banana", label_ru: "Double banana" }
+    ];
+    // For demo: generate the full list of images with answers
+    function generateEEGImages() {
+      const arr = [];
+      for (let montage of MONTAGES) {
+        for (let state of STATES) {
+          for (let i=1; i<=5; ++i) {
+            arr.push({
+              url: `img/${state}_${i}_${montage.value}.png`,
+              answer: state,
+              montage: montage.value
+            });
+          }
+        }
+      }
+      return arr;
+    }
+    const EEG_IMAGES = generateEEGImages();
+
+    const translations = {
+      en: {
+        appTitle: "Learning sleep stages on EEG",
+        course: "Course",
+        blitz: "Blitz",
+        atlas: "Atlas",
+        achievements: "Achievements",
+        nothingHere: "Nothing here yet",
+        blitzInstructions: "You will be given 60 images of sleep EEG. Choose one of the 4 sleep stages, or eyes open/closed.",
+        back: "Back",
+        start: "Start",
+        finish: "Finish",
+        montage: "Montage",
+        stages: {
+          eyeOpen: "Eyes open",
+          eyeClosed: "Eyes closed",
+          rem: "REM",
+          n1: "N1",
+          n2: "N2",
+          n3: "N3"
+        },
+        correct: "Correct",
+        incorrect: "Incorrect",
+        stats: "Quiz results",
+        correctAnswers: "Correct answers",
+        incorrectAnswers: "Incorrect answers",
+        selectLang: "Language"
+      },
+      ru: {
+        appTitle: "Обучение стадиям сна по ЭЭГ",
+        course: "Курс",
+        blitz: "Блиц",
+        atlas: "Атлас",
+        achievements: "Достижения",
+        nothingHere: "Здесь пока ничего нет",
+        blitzInstructions: "Вам будет показано 60 изображений ЭЭГ во сне. Выберите одну из 4 стадий сна или глаза открыты/закрыты.",
+        back: "Назад",
+        start: "Начать",
+        finish: "Завершить",
+        montage: "Монтаж",
+        stages: {
+          eyeOpen: "Глаза открыты",
+          eyeClosed: "Глаза закрыты",
+          rem: "REM",
+          n1: "N1",
+          n2: "N2",
+          n3: "N3"
+        },
+        correct: "Верно",
+        incorrect: "Неверно",
+        stats: "Результаты",
+        correctAnswers: "Верных ответов",
+        incorrectAnswers: "Ошибок",
+        selectLang: "Язык"
+      }
+    };
+
+    let lang = localStorage.getItem('eegAppLang') || 'en';
+    let appState = { page: 'menu' };
+    let blitzState = null;
+    let montage = localStorage.getItem('eegAppMontage') || 'mono';
+
+    // --- Utils ---
+    function t(key) {
+      const keys = key.split('.');
+      let val = translations[lang];
+      for (let k of keys) val = val[k];
+      return val;
+    }
+    function setLang(newLang) {
+      lang = newLang;
+      localStorage.setItem('eegAppLang', lang);
+      render();
+    }
+    function setMontage(newMontage) {
+      montage = newMontage;
+      localStorage.setItem('eegAppMontage', montage);
+      render();
+    }
+    function getMontageLabel(value) {
+      const m = MONTAGES.find(m => m.value === value);
+      return lang==='ru'?m.label_ru:m.label_en;
+    }
+
+    // --- Components ---
+    function renderMenu() {
+      return `
+        <div class="lang-select">
+          <label>${t('selectLang')}: 
+            <select onchange="setLang(this.value)">
+              <option value="en"${lang==='en'?' selected':''}>English</option>
+              <option value="ru"${lang==='ru'?' selected':''}>Русский</option>
+            </select>
+          </label>
+        </div>
+        <h2>${t('appTitle')}</h2>
+        <div class="menu-btns">
+          <button class="btn" onclick="goto('course')">${t('course')}</button>
+          <button class="btn" onclick="goto('blitz')">${t('blitz')}</button>
+          <button class="btn" onclick="goto('atlas')">${t('atlas')}</button>
+          <button class="btn" onclick="goto('achievements')">${t('achievements')}</button>
+        </div>
+      `;
+    }
+
+    function renderNothing() {
+      return `
+        <div class="lang-select">
+          <label>${t('selectLang')}: 
+            <select onchange="setLang(this.value)">
+              <option value="en"${lang==='en'?' selected':''}>English</option>
+              <option value="ru"${lang==='ru'?' selected':''}>Русский</option>
+            </select>
+          </label>
+        </div>
+        <h2>${t('appTitle')}</h2>
+        <div style="text-align:center; font-size:22px; margin-top:60px;">
+          ${t('nothingHere')}
+        </div>
+        <div class="nav-btns">
+          <button class="btn" onclick="goto('menu')">${t('back')}</button>
+        </div>
+      `;
+    }
+
+    function renderMontageSelect() {
+      return `<label style="font-size:16px;">
+        ${t('montage')}:
+        <select class="montage-select" onchange="setMontage(this.value)">
+          ${MONTAGES.map(m =>
+            `<option value="${m.value}"${montage===m.value?' selected':''}>${lang==='ru'?m.label_ru:m.label_en}</option>`
+          ).join('')}
+        </select>
+      </label>`;
+    }
+
+    function renderBlitzIntro() {
+      return `
+        <div class="lang-select">
+          <label>${t('selectLang')}: 
+            <select onchange="setLang(this.value)">
+              <option value="en"${lang==='en'?' selected':''}>English</option>
+              <option value="ru"${lang==='ru'?' selected':''}>Русский</option>
+            </select>
+          </label>
+        </div>
+        <div class="blitz-header">
+          <div class="blitz-title-row">
+            <button class="back-icon-btn" onclick="goto('menu')" title="${t('back')}">
+              <svg viewBox="0 0 24 24"><path d="M15.5 19l-7-7 7-7"/></svg>
+            </button>
+            <h2 style="margin:0;">${t('blitz')}</h2>
+          </div>
+        </div>
+        <div class="blitz-instructions">
+          ${t('blitzInstructions')}
+        </div>
+        <div style="text-align:center; margin-bottom: 18px;">
+          ${renderMontageSelect()}
+        </div>
+        <div class="nav-btns" style="justify-content: flex-end;">
+          <button class="btn" onclick="startBlitz()">${t('start')}</button>
+        </div>
+      `;
+    }
+
+    function imageExists(url, callback) {
+      var img = new window.Image();
+      img.onload = function() { callback(true); };
+      img.onerror = function() { callback(false); };
+      img.src = url;
+    }
+    // Used for fallback handling of missing images
+    function renderEEGImage(url, state, index, montage, onReady) {
+      imageExists(url, function(exists) {
+        if (exists) {
+          onReady(`<img src="${url}" alt="EEG" class="eeg-img"/>`);
+        } else {
+          const label = `${t('stages.'+state) || state}, ${index+1}, ${getMontageLabel(montage)}`;
+          onReady(`<img src="data:image/svg+xml;utf8,${encodeURIComponent(
+            `<svg width='360' height='120' xmlns='http://www.w3.org/2000/svg'><rect width='100%' height='100%' fill='#eee'/><text x='50%' y='55%' font-size='20' text-anchor='middle' fill='#1976d2' font-family='Arial'>${label}</text></svg>`
+          )}" alt="EEG" class="eeg-img"/>`);
+        }
+      });
+    }
+
+    function renderBlitzQuiz() {
+      const q = blitzState.questions[blitzState.current];
+      let eegImgHtml = '';
+      let renderDone = false;
+      // Render EEG image, fallback if not exists, async
+      renderEEGImage(q.url, q.answer, blitzState.current%5, q.montage, function(html) {
+        if (renderDone) return;
+        eegImgHtml = html;
+        renderDone = true;
+        updateEEGImage(eegImgHtml);
+      });
+      function updateEEGImage(html) {
+        const eegDiv = document.getElementById('eeg-img-container');
+        if (eegDiv) eegDiv.innerHTML = html;
+      }
+      // REM/N1/N2/N3/eyes open / eyes closed - 2 columns
+      let btnsArr = ['rem','n1','n2','n3', 'eyeOpen','eyeClosed'].map(stage => {
+        let btnClass = 'choice-btn';
+        if (blitzState.answered) {
+          if (stage === q.answer && blitzState.selected === stage) btnClass += ' correct';
+          else if (stage === blitzState.selected && stage !== q.answer) btnClass += ' incorrect';
+          else if (stage === q.answer && blitzState.selected !== q.answer) btnClass += ' right-shade';
+        }
+        return `<button class="${btnClass}" ${blitzState.answered ? 'disabled' : ''} onclick="answerBlitz('${stage}')">${t('stages.'+stage)}</button>`;
+      });
+      // Montage selector top right
+      return `
+        <div class="blitz-header">
+          <div class="blitz-title-row">
+            <button class="back-icon-btn" onclick="goto('menu')" title="${t('back')}">
+              <svg viewBox="0 0 24 24"><path d="M15.5 19l-7-7 7-7"/></svg>
+            </button>
+            <h2 style="margin:0;">${t('blitz')}</h2>
+          </div>
+          ${renderMontageSelect()}
+        </div>
+        <div style="text-align:center;font-size:18px;margin-bottom:8px;">
+          ${blitzState.current+1}/${blitzState.questions.length}
+        </div>
+        <div id="eeg-img-container">${eegImgHtml}</div>
+        <div class="blitz-choices">${btnsArr.join('')}</div>
+      `;
+    }
+
+    function renderBlitzStats() {
+      const correct = blitzState.stats.correct;
+      const incorrect = blitzState.stats.incorrect;
+      return `
+        <div class="blitz-header">
+          <div class="blitz-title-row">
+            <button class="back-icon-btn" onclick="goto('menu')" title="${t('back')}">
+              <svg viewBox="0 0 24 24"><path d="M15.5 19l-7-7 7-7"/></svg>
+            </button>
+            <h2 style="margin:0;">${t('blitz')}</h2>
+          </div>
+          ${renderMontageSelect()}
+        </div>
+        <h2>${t('stats')}</h2>
+        <div class="stats-block">
+          <div>${t('correctAnswers')}: <b>${correct}</b></div>
+          <div>${t('incorrectAnswers')}: <b>${incorrect}</b></div>
+        </div>
+        <div class="nav-btns">
+          <button class="btn" onclick="goto('menu')">${t('finish')}</button>
+        </div>
+      `;
+    }
+
+    // --- Logic ---
+    function goto(page) {
+      appState.page = page;
+      if (page !== 'blitz-quiz' && page !== 'blitz-stats') blitzState = null;
+      render();
+    }
+    function startBlitz() {
+      // Get all images for selected montage, shuffle, pick 60
+      const montageImages = EEG_IMAGES.filter(img => img.montage === montage);
+      const randomQuestions = montageImages.slice().sort(() => Math.random()-0.5).slice(0,60);
+      blitzState = {
+        questions: randomQuestions,
+        current: 0,
+        answered: false,
+        selected: null,
+        stats: { correct: 0, incorrect: 0 }
+      };
+      appState.page = 'blitz-quiz';
+      render();
+    }
+    function answerBlitz(stage) {
+      const q = blitzState.questions[blitzState.current];
+      blitzState.selected = stage;
+      blitzState.answered = true;
+      if (stage === q.answer) blitzState.stats.correct++;
+      else blitzState.stats.incorrect++;
+      render();
+      setTimeout(() => {
+        if (blitzState.current < blitzState.questions.length - 1) {
+          blitzState.current++;
+          blitzState.answered = false;
+          blitzState.selected = null;
+          render();
+        } else {
+          appState.page = 'blitz-stats';
+          render();
+        }
+      }, 900);
+    }
+
+    // --- Main render ---
+    function render() {
+      const app = document.getElementById('app');
+      window.setLang = setLang;
+      window.goto = goto;
+      window.startBlitz = startBlitz;
+      window.answerBlitz = answerBlitz;
+      window.setMontage = setMontage;
+      let html = '';
+      switch(appState.page) {
+        case 'menu': html = renderMenu(); break;
+        case 'course': html = renderNothing(); break;
+        case 'atlas': html = renderNothing(); break;
+        case 'achievements': html = renderNothing(); break;
+        case 'blitz': html = renderBlitzIntro(); break;
+        case 'blitz-quiz': html = renderBlitzQuiz(); break;
+        case 'blitz-stats': html = renderBlitzStats(); break;
+        default: html = renderMenu();
+      }
+      app.innerHTML = html;
+    }
+    render();
+  </script>
+</body>
+</html>
