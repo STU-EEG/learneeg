@@ -49,9 +49,9 @@
       const arr = [];
       for (let montage of MONTAGES) {
         for (let state of STATES) {
-          for (let i=1; i<=1; ++i) {
+          for (let i=1; i<=1 /* was 5 originally */ ; ++i) {
             arr.push({
-              url: `img/${state}_${i}_${montage.value}.png`,
+              url: `./docs/assets/images/${state}_${i}_${montage.value}.png`,
               answer: state,
               montage: montage.value
             });
