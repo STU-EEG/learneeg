@@ -40,6 +40,12 @@
     const STATES = [
       // 'n1','n2',
       'n3','rem','eyeOpen','eyeClosed'];
+    const STATE_IMAGE_PREFIX = {
+    n3: "f3Da4",
+    rem: "k2Qp7",
+    eyeOpen: "z9Lm2",
+    eyeClosed: "b8Rt5"
+  };
     const MONTAGES = [
       { value: "mono", label_en: "Monopolar", label_ru: "Монополярный" },
       { value: "double", label_en: "Double banana", label_ru: "Double banana" }
@@ -51,7 +57,7 @@
         for (let state of STATES) {
           for (let i=1; i<=1 /* was 5 originally */ ; ++i) {
             arr.push({
-              url: `./docs/assets/images/${state}_${i}_${montage.value}.png`,
+              url: `./docs/assets/images/${STATE_IMAGE_PREFIX[state]}_${i}_${montage.value}.png`,
               answer: state,
               montage: montage.value
             });
@@ -91,7 +97,7 @@
         selectLang: "Language"
       },
       ru: {
-        appTitle: "Обучение стадиям сна по ЭЭГ",
+        appTitle: "Определение стадий сна по ЭЭГ",
         course: "Курс",
         blitz: "Блиц",
         atlas: "Атлас",
@@ -238,7 +244,7 @@
     function renderEEGImage(url, state, index, montage, onReady) {
       imageExists(url, function(exists) {
         if (exists) {
-          onReady(`<img src="${url}" alt="EEG" class="eeg-img"/>`);
+          onReady(`<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="EEG" class="eeg-img"/></a>`);
         } else {
           const label = `${t('stages.'+state) || state}, ${index+1}, ${getMontageLabel(montage)}`;
           onReady(`<img src="data:image/svg+xml;utf8,${encodeURIComponent(
